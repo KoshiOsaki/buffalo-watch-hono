@@ -9,7 +9,7 @@ export type User = DocumentBase & {
 export type Device = {
   type: DeviceType;
   name: string;
-  ipAddress: string;
+  macAddress: string;
 };
 
 export type DeviceType = "PC" | "iPhone";
