@@ -4,9 +4,12 @@ const { App } = bolt;
 import admin from "firebase-admin";
 import dotenv from "dotenv";
 import { serve } from "@hono/node-server";
-import { fetchUserList } from "./repository/user.js";
+import { fetchUserList, updateUser } from "./repository/user.js";
 import { WORKSPACE_ID } from "./constants/index.js";
 import { exec } from "child_process";
+import path from "path";
+import fs from "fs";
+import type { Device, User } from "./firebase/models/user.js";
 
 dotenv.config();
 
@@ -100,6 +103,97 @@ app.get("/check", async (c) => {
       );
     });
   });
+});
+
+// ユーザー作成フォームを表示するエンドポイント
+app.get("/user-form", async (c) => {
+  try {
+    const filePath = path.join(__dirname, "templates", "user-form.html");
+    const htmlContent = fs.readFileSync(filePath, "utf-8");
+    return c.html(htmlContent);
+  } catch (error) {
+    console.error("HTMLファイル読み込みエラー:", error);
+    return c.text("ユーザーフォームの読み込みに失敗しました", 500);
+  }
+});
+
+// ユーザー作成APIエンドポイント
+app.post("/create-user", async (c) => {
+  try {
+    const data = await c.req.json();
+
+    // バリデーション
+    if (
+      !data.id ||
+      !data.name ||
+      !Array.isArray(data.deviceList) ||
+      data.deviceList.length === 0
+    ) {
+      return c.json(
+        {
+          status: "error",
+          message: "必須フィールドが不足しています（id, name, deviceList）",
+        },
+        400
+      );
+    }
+
+    // デバイスリストのバリデーション
+    for (const device of data.deviceList) {
+      if (!device.type || !device.name || !device.macAddress) {
+        return c.json(
+          {
+            status: "error",
+            message: "各デバイスには type, name, macAddress が必要です",
+          },
+          400
+        );
+      }
+
+      // デバイスタイプのバリデーション
+      if (device.type !== "PC" && device.type !== "iPhone") {
+        return c.json(
+          {
+            status: "error",
+            message:
+              "デバイスタイプは 'PC' または 'iPhone' である必要があります",
+          },
+          400
+        );
+      }
+    }
+
+    // ユーザーデータの作成
+    const user: User = {
+      id: data.id,
+      name: data.name,
+      deviceList: data.deviceList as Device[],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    // ワークスペースID（デフォルト値または指定された値）
+    const workspaceId = data.workspaceId || "default";
+
+    // Firestoreにユーザーを保存
+    await updateUser(workspaceId, user);
+
+    return c.json({
+      status: "success",
+      message: "ユーザーが正常に作成されました",
+      user: user,
+    });
+  } catch (error) {
+    console.error("ユーザー作成エラー:", error);
+    return c.json(
+      {
+        status: "error",
+        message: "ユーザーの作成に失敗しました",
+        error: (error as Error).message,
+      },
+      500
+    );
+  }
 });
 
 // Firestoreの接続テスト用エンドポイント
