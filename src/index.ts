@@ -4,6 +4,9 @@ const { App } = bolt;
 import admin from "firebase-admin";
 import dotenv from "dotenv";
 import { serve } from "@hono/node-server";
+import { fetchUserList } from "./repository/user.js";
+import { WORKSPACE_ID } from "./constants/index.js";
+import { exec } from "child_process";
 
 dotenv.config();
 
@@ -19,7 +22,7 @@ const slackApp = new App({
 admin.initializeApp({
   credential: admin.credential.applicationDefault(),
 });
-const db = admin.firestore();
+export const db = admin.firestore();
 
 // Slackイベントのリスナー
 slackApp.event("app_mention", async ({ event, say }) => {
@@ -37,6 +40,66 @@ slackApp.event("app_mention", async ({ event, say }) => {
 // ルートエンドポイント
 app.get("/", (c) => {
   return c.text("Buffalo Watch API サーバーが稼働中です！");
+});
+
+// ARPコマンドを実行して在席ユーザーを確認するエンドポイント
+app.get("/check", async (c) => {
+  const userList = await fetchUserList(WORKSPACE_ID);
+
+  return new Promise((resolve) => {
+    exec("arp -a", (error, stdout, stderr) => {
+      if (error) {
+        console.error(`ARPコマンド実行エラー: ${stderr}`);
+        resolve(
+          c.json(
+            {
+              status: "error",
+              message: "デバイスリストの取得に失敗しました",
+              error: stderr,
+            },
+            500
+          )
+        );
+        return;
+      }
+
+      // ARPテーブルからMACアドレスを抽出
+      const connectedDevices = stdout
+        .split("\n")
+        .map((line) => {
+          // MACアドレスのパターンを検出（OSによって出力形式が異なる場合があるため調整が必要かも）
+          const match = line.match(/\((.*?)\).*?at (.*?) on/);
+          return match ? { ip: match[1], mac: match[2].toLowerCase() } : null;
+        })
+        .filter(Boolean);
+
+      // 接続デバイスとユーザーリストのdeviceのmacAddressを照合
+      const presentUsers = connectedDevices
+        .map((device) =>
+          userList.find((user) =>
+            user.deviceList.find((d) => d.macAddress === device?.mac || "")
+          )
+        )
+        .filter(Boolean);
+
+      // 在席状況メッセージの作成
+      const message = presentUsers.length
+        ? `オフィスにいるのは：${presentUsers
+            .map((user) => user?.name)
+            .join("、")}`
+        : "誰もオフィスにいません";
+
+      // 結果をJSONで返す
+      resolve(
+        c.json({
+          status: "success",
+          message: message,
+          presentUsers: presentUsers,
+          connectedDevices: connectedDevices,
+        })
+      );
+    });
+  });
 });
 
 // Firestoreの接続テスト用エンドポイント

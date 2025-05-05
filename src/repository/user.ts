@@ -5,11 +5,11 @@ import type {
 } from "firebase-admin/firestore";
 
 import { VERSION } from "../constants/index.js";
-import { firestore } from "../firebase/init.js";
 import type { User } from "../firebase/models/user.js";
+import { db } from "../index.js";
 
 export const fetchUserList = async (workspaceId: string) => {
-  const _collectionRef = firestore
+  const _collectionRef = db
     .collection(`version/${VERSION}/workspace/${workspaceId}/user`)
     .withConverter(userConverter);
   const _queryDocSnapshot = (await _collectionRef.get()).docs;
@@ -18,7 +18,7 @@ export const fetchUserList = async (workspaceId: string) => {
 };
 
 export const findUser = async (workspaceId: string, slackUserId: string) => {
-  const _docRef = firestore
+  const _docRef = db
     .collection(`version/${VERSION}/workspace/${workspaceId}/user`)
     .doc(slackUserId)
     .withConverter(userConverter);
@@ -29,7 +29,7 @@ export const findUser = async (workspaceId: string, slackUserId: string) => {
 
 // createもこれを使う
 export const updateUser = async (workspaceId: string, editedUser: User) => {
-  const _docRef = firestore
+  const _docRef = db
     .collection(`version/${VERSION}/workspace/${workspaceId}/user`)
     .doc(editedUser.id)
     .withConverter(userConverter);
