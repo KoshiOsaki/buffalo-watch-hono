@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ユーザー登録フォーム</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input[type="text"],
+    input[type="email"] {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    .device-container {
+      margin-top: 20px;
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 4px;
+    }
+    .device-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .add-device {
+      background-color: #2ecc71;
+    }
+    .add-device:hover {
+      background-color: #27ae60;
+    }
+    .remove-device {
+      background-color: #e74c3c;
+      margin-left: 10px;
+    }
+    .remove-device:hover {
+      background-color: #c0392b;
+    }
+  </style>
+</head>
+<body>
+  <h1>ユーザー登録</h1>
+  <form id="userForm" method="POST" action="/create-user">
+    <div class="form-group">
+      <label for="name">名前</label>
+      <input type="text" id="name" name="name" required>
+    </div>
+    <div class="form-group">
+      <label for="email">メールアドレス</label>
+      <input type="email" id="email" name="email" required>
+    </div>
+    <div class="form-group">
+      <label for="slackId">Slack ID</label>
+      <input type="text" id="slackId" name="slackId" required>
+    </div>
+
+    <h2>デバイス</h2>
+    <div id="devices">
+      <div class="device-container" data-index="0">
+        <div class="device-header">
+          <h3>デバイス 1</h3>
+          <button type="button" class="remove-device" onclick="removeDevice(this)">削除</button>
+        </div>
+        <div class="form-group">
+          <label for="devices[0].name">デバイス名</label>
+          <input type="text" id="devices[0].name" name="devices[0].name" required>
+        </div>
+        <div class="form-group">
+          <label for="devices[0].mac">MACアドレス</label>
+          <input type="text" id="devices[0].mac" name="devices[0].mac" required placeholder="00:11:22:33:44:55">
+        </div>
+      </div>
+    </div>
+
+    <button type="button" class="add-device" onclick="addDevice()">デバイスを追加</button>
+    <hr>
+    <button type="submit">登録</button>
+  </form>
+
+  <script>
+    let deviceCount = 1;
+
+    function addDevice() {
+      const devicesContainer = document.getElementById('devices');
+      const index = deviceCount;
+      
+      const deviceDiv = document.createElement('div');
+      deviceDiv.className = 'device-container';
+      deviceDiv.dataset.index = index;
+      
+      deviceDiv.innerHTML = `
+        <div class="device-header">
+          <h3>デバイス ${index + 1}</h3>
+          <button type="button" class="remove-device" onclick="removeDevice(this)">削除</button>
+        </div>
+        <div class="form-group">
+          <label for="devices[${index}].name">デバイス名</label>
+          <input type="text" id="devices[${index}].name" name="devices[${index}].name" required>
+        </div>
+        <div class="form-group">
+          <label for="devices[${index}].mac">MACアドレス</label>
+          <input type="text" id="devices[${index}].mac" name="devices[${index}].mac" required placeholder="00:11:22:33:44:55">
+        </div>
+      `;
+      
+      devicesContainer.appendChild(deviceDiv);
+      deviceCount++;
+    }
+
+    function removeDevice(button) {
+      const deviceDiv = button.closest('.device-container');
+      if (document.querySelectorAll('.device-container').length > 1) {
+        deviceDiv.remove();
+        updateDeviceNumbers();
+      } else {
+        alert('少なくとも1つのデバイスが必要です');
+      }
+    }
+
+    function updateDeviceNumbers() {
+      const devices = document.querySelectorAll('.device-container');
+      devices.forEach((device, index) => {
+        device.dataset.index = index;
+        device.querySelector('h3').textContent = `デバイス ${index + 1}`;
+        
+        const nameInput = device.querySelector('[id^="devices"][id$=".name"]');
+        const macInput = device.querySelector('[id^="devices"][id$=".mac"]');
+        
+        nameInput.id = `devices[${index}].name`;
+        nameInput.name = `devices[${index}].name`;
+        
+        macInput.id = `devices[${index}].mac`;
+        macInput.name = `devices[${index}].mac`;
+      });
+      
+      deviceCount = devices.length;
+    }
+
+    document.getElementById('userForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const formData = new FormData(this);
+      const userData = {
+        id: formData.get('slackId'), // slackIdをidとして使用
+        name: formData.get('name'),
+        email: formData.get('email'), // 追加情報として保持
+        deviceList: [] // devicesからdeviceListに変更
+      };
+      
+      const devices = document.querySelectorAll('.device-container');
+      devices.forEach((device, index) => {
+        userData.deviceList.push({
+          type: "PC", // デフォルトでPCとして設定
+          name: formData.get(`devices[${index}].name`),
+          macAddress: formData.get(`devices[${index}].mac`) // macからmacAddressに変更
+        });
+      });
+      
+      fetch('/create-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userData)
+      })
+      .then(response => {
+        if (response.ok) {
+          return response.json();
+        }
+        throw new Error('ユーザー登録に失敗しました');
+      })
+      .then(data => {
+        alert('ユーザーが正常に登録されました');
+        this.reset();
+        // 最初の1つだけ残してデバイスをクリア
+        const devices = document.querySelectorAll('.device-container');
+        for (let i = 1; i < devices.length; i++) {
+          devices[i].remove();
+        }
+        updateDeviceNumbers();
+      })
+      .catch(error => {
+        alert(error.message);
+      });
+    });
+  </script>
+</body>
+</html>
