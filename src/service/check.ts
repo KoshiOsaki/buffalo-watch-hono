@@ -1,26 +1,44 @@
 import type { Context } from "hono";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
+import { promisify } from "util";
 import { fetchUserList } from "../repository/user.js";
 import { WORKSPACE_ID } from "../constants/index.js";
+const execF = promisify(execFile);
 
-/**
- * ARPコマンドを実行して在席ユーザーを確認する
- */
+const ARP_SCAN_ARGS = [
+  "--localnet",
+  "--interface=en0",
+  "--retry=1",
+  "--interval=100",
+  "--timeout=50",
+  "--ignoredups",
+  "--plain", // IP  MAC  Vendor
+  "--quiet",
+];
+const needsSudo = true; // sudo が不要なら false に
+async function runArpScan(): Promise<string> {
+  const cmd = needsSudo
+    ? ["sudo", "arp-scan", ...ARP_SCAN_ARGS]
+    : ["arp-scan", ...ARP_SCAN_ARGS];
+  const { stdout } = await execF(cmd[0], cmd.slice(1));
+  return stdout;
+}
+
 export const checkApi = async (c: Context) => {
   const userList = await fetchUserList(WORKSPACE_ID);
 
   try {
-    const stdout = await execCommand("arp -a");
-
+    // const stdout = await execCommand("arp -a");
+    const stdout = await runArpScan();
     // ARPテーブルからMACアドレスを抽出
     const connectedDevices = stdout
+      .trim()
       .split("\n")
-      .map((line) => {
-        // MACアドレスのパターンを検出（OSによって出力形式が異なる場合があるため調整が必要かも）
-        const match = line.match(/\((.*?)\).*?at (.*?) on/);
-        return match ? { ip: match[1], mac: match[2].toLowerCase() } : null;
-      })
-      .filter(Boolean);
+      .filter((l) => /^\d+\.\d+\.\d+\.\d+/.test(l)) // ヘッダ行の除去
+      .map((l) => {
+        const [ip, mac] = l.split(/\s+/);
+        return { ip, mac: mac.toLowerCase() };
+      });
 
     // 接続デバイスとユーザーリストのdeviceのmacAddressを照合
     const presentUsers = connectedDevices
