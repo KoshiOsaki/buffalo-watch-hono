@@ -44,7 +44,10 @@ export const checkApi = async (c: Context) => {
     const presentUsers = connectedDevices
       .map((device) =>
         userList.find((user) =>
-          user.deviceList.find((d) => d.macAddress === device?.mac || "")
+          user.deviceList.find(
+            (d) =>
+              d.macAddress.toLowerCase() === (device?.mac || "").toLowerCase()
+          )
         )
       )
       .filter(Boolean);
