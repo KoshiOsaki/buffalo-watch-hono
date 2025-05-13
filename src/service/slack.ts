@@ -4,6 +4,8 @@ import { fetchUserList } from "../repository/user.js";
 import { runArpScan } from "../service/check.js";
 import { WORKSPACE_ID } from "../constants/index.js";
 import type { ReceiverEvent } from "@slack/bolt";
+import { runDoubleArpScan } from "./check.js";
+import type { Device, User } from "../firebase/models/user.js";
 
 export const setupSlackEventListeners = () => {
   slackApp.event("app_mention", async ({ event, say }) => {
@@ -20,25 +22,15 @@ export const setupSlackEventListeners = () => {
           // ユーザーリストを取得
           const userList = await fetchUserList(WORKSPACE_ID);
 
-          // ARPスキャンを実行
-          const stdout = await runArpScan();
-
-          // ARPテーブルからMACアドレスを抽出
-          const connectedDevices = stdout
-            .trim()
-            .split("\n")
-            .filter((l) => /^\d+\.\d+\.\d+\.\d+/.test(l)) // ヘッダ行の除去
-            .map((l) => {
-              const [ip, mac] = l.split(/\s+/);
-              return { ip, mac: mac.toLowerCase() };
-            });
+          // 1分間隔で2回ARPスキャンを実行
+          const connectedDevices = await runDoubleArpScan();
 
           // 接続デバイスとユーザーリストのdeviceのmacAddressを照合
           const presentUsers = connectedDevices
-            .map((device) =>
-              userList.find((user) =>
+            .map((device: { ip: string; mac: string }) =>
+              userList.find((user: User) =>
                 user.deviceList.find(
-                  (d) =>
+                  (d: Device) =>
                     d.macAddress.toLowerCase() ===
                     (device?.mac || "").toLowerCase()
                 )

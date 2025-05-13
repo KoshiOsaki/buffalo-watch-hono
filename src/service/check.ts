@@ -3,6 +3,8 @@ import { exec, execFile } from "child_process";
 import { promisify } from "util";
 import { fetchUserList } from "../repository/user.js";
 import { WORKSPACE_ID } from "../constants/index.js";
+import fs from "fs";
+import path from "path";
 const execF = promisify(execFile);
 
 const ARP_SCAN_ARGS = [
@@ -25,14 +27,50 @@ export const runArpScan = async (): Promise<string> => {
   return stdout;
 };
 
-export const checkApi = async (c: Context) => {
-  const userList = await fetchUserList(WORKSPACE_ID);
+// ログディレクトリの設定
+const LOG_DIR = path.join(process.cwd(), "logs");
 
-  try {
-    // const stdout = await execCommand("arp -a");
-    const stdout = await runArpScan();
-    // ARPテーブルからMACアドレスを抽出
-    const connectedDevices = stdout
+// 日付ごとのログファイル名を生成
+const getLogFilePath = (): string => {
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD形式
+  return path.join(LOG_DIR, `arp-scan-${today}.log`);
+};
+
+// ログディレクトリが存在しない場合は作成
+const ensureLogDir = (): void => {
+  if (!fs.existsSync(LOG_DIR)) {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+  }
+};
+
+// スキャン結果をログに記録
+const logScanResult = (scanName: string, result: string): void => {
+  ensureLogDir();
+  const logFile = getLogFilePath();
+  const timestamp = new Date().toISOString();
+  const logEntry = `[${timestamp}] ${scanName}\n${result}\n\n`;
+
+  fs.appendFileSync(logFile, logEntry);
+};
+
+// 1分間隔で2回スキャンを実行して結果を統合する関数
+export const runDoubleArpScan = async (): Promise<
+  { ip: string; mac: string }[]
+> => {
+  // 1回目のスキャン
+  const firstScan = await runArpScan();
+  logScanResult("FIRST_SCAN", firstScan);
+
+  // 1分待機
+  await new Promise((resolve) => setTimeout(resolve, 60000));
+
+  // 2回目のスキャン
+  const secondScan = await runArpScan();
+  logScanResult("SECOND_SCAN", secondScan);
+
+  // 両方のスキャン結果からデバイスリストを抽出
+  const parseDevices = (stdout: string) => {
+    return stdout
       .trim()
       .split("\n")
       .filter((l) => /^\d+\.\d+\.\d+\.\d+/.test(l)) // ヘッダ行の除去
@@ -40,6 +78,26 @@ export const checkApi = async (c: Context) => {
         const [ip, mac] = l.split(/\s+/);
         return { ip, mac: mac.toLowerCase() };
       });
+  };
+
+  const firstDevices = parseDevices(firstScan);
+  const secondDevices = parseDevices(secondScan);
+
+  // 両方の結果を統合し、MACアドレスでユニークにする
+  const allDevices = [...firstDevices, ...secondDevices];
+  const uniqueDevices = Array.from(
+    new Map(allDevices.map((device) => [device.mac, device])).values()
+  );
+
+  return uniqueDevices;
+};
+
+export const checkApi = async (c: Context) => {
+  const userList = await fetchUserList(WORKSPACE_ID);
+
+  try {
+    // 1分間隔で2回スキャンを実行
+    const connectedDevices = await runDoubleArpScan();
 
     // 接続デバイスとユーザーリストのdeviceのmacAddressを照合
     const presentUsers = connectedDevices
