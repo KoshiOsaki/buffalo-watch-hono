@@ -10,19 +10,20 @@ const ARP_SCAN_ARGS = [
   "--interface=en0",
   "--retry=1",
   "--interval=100",
-  "--timeout=50",
+  "--timeout=200",
   "--ignoredups",
   "--plain", // IP  MAC  Vendor
   "--quiet",
 ];
+
 const needsSudo = true; // sudo が不要なら false に
-async function runArpScan(): Promise<string> {
+export const runArpScan = async (): Promise<string> => {
   const cmd = needsSudo
     ? ["sudo", "arp-scan", ...ARP_SCAN_ARGS]
     : ["arp-scan", ...ARP_SCAN_ARGS];
   const { stdout } = await execF(cmd[0], cmd.slice(1));
   return stdout;
-}
+};
 
 export const checkApi = async (c: Context) => {
   const userList = await fetchUserList(WORKSPACE_ID);

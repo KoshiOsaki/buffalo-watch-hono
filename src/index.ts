@@ -7,7 +7,7 @@ import { serve } from "@hono/node-server";
 import { firestoreTestApi } from "./service/firestore.js";
 import { checkApi } from "./service/check.js";
 import { createUserApi } from "./service/create-user.js";
-import { slackApi } from "./service/slack.js";
+import { setupSlackEventListeners, slackApi } from "./service/slack.js";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -26,6 +26,8 @@ export const slackApp = new App({
   token: process.env.SLACK_BOT_TOKEN,
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
+// Slackイベントリスナーの設定
+setupSlackEventListeners();
 
 // Firestoreの初期化
 admin.initializeApp({
